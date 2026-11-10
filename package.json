@@ -1,0 +1,34 @@
+{
+  "name": "vitest-viz",
+  "version": "0.1.0",
+  "description": "A live visual reporter for Vitest: throughput graph, one row of pass/fail cells per file, failures you can click.",
+  "keywords": ["vitest", "vitest-reporter", "test", "testing", "visualization", "reporter"],
+  "license": "MIT",
+  "author": "h0ds",
+  "repository": { "type": "git", "url": "git+https://github.com/h0ds/vitest-viz.git" },
+  "homepage": "https://github.com/h0ds/vitest-viz#readme",
+  "bugs": "https://github.com/h0ds/vitest-viz/issues",
+  "type": "module",
+  "exports": {
+    ".": { "types": "./src/reporter.d.mts", "default": "./src/reporter.mjs" },
+    "./package.json": "./package.json"
+  },
+  "files": ["src", "README.md", "LICENSE"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "vitest run",
+    "demo": "vitest run --config demo/vitest.config.mjs",
+    "gif": "node scripts/make-gif.mjs"
+  },
+  "peerDependencies": {
+    "playwright-core": ">=1.40.0",
+    "vitest": ">=4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "playwright-core": { "optional": true }
+  },
+  "devDependencies": {
+    "playwright-core": "^1.64.1",
+    "vitest": "^5.1.0"
+  }
+}

@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test replay</title>
+<style>
+  :root { --bg:#1c1c1c; --fg:#f2f2f2; --dim:#7d7d7d; --ok:#3dff6a; --bad:#ff4040; --pend:#383838; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.35 system-ui,sans-serif; display:grid; place-items:center; min-height:100vh; padding:16px }
+  .card { width:min(820px,100%) }
+  header { display:flex; justify-content:space-between; align-items:center; gap:12px }
+  .lead { display:flex; gap:14px; align-items:center }
+  .badge { width:40px; height:40px; border-radius:10px; background:#2a2a2a; display:grid; place-items:center; font-size:18px; color:var(--dim) }
+  .badge.ok { color:var(--ok) } .badge.bad { color:var(--bad) }
+  h1 { font-size:20px; font-weight:500; margin:0 }
+  .sub { color:var(--dim); font-size:14px; font-family:ui-monospace,Consolas,monospace } .sub, .mono { font-family:ui-monospace,Consolas,monospace }
+  .stats { text-align:right; color:var(--dim) }
+  .time { font-size:20px; color:var(--fg); font-variant-numeric:tabular-nums }
+  .stats i { color:var(--bad); font-style:normal }
+  .graphhead { display:flex; justify-content:space-between; margin:22px 0 8px; color:#555; font-size:14px }
+  canvas { width:100%; height:130px; display:block; background:#242424; border-radius:10px }
+  .foot { color:#555; margin:8px 0 22px; font-size:14px }
+  .rows { display:grid; gap:14px }
+  .row { display:grid; grid-template-columns:minmax(120px,210px) 1fr 70px; gap:14px; align-items:center; transition:opacity .5s }
+  .row[hidden] { display:none }
+  .row .name { font-family:ui-monospace,Consolas,monospace; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--dim) }
+  .row.live .name { color:var(--fg) }
+  .cells { display:flex; gap:3px; height:22px; overflow:hidden }
+  .cell { flex:1 1 0; max-width:7px; min-width:2px; border-radius:2px; background:var(--pend) }
+  .cell.p { background:var(--ok) } .cell.f { background:var(--bad); cursor:pointer } .cell.s { background:#6a6a6a }
+  .cell.sel { outline:2px solid #fff; outline-offset:1px }
+  .res { text-align:right; font-family:ui-monospace,Consolas,monospace; color:var(--dim); font-variant-numeric:tabular-nums }
+  .res.bad { color:var(--bad) }
+  .done .row.dim { opacity:.4 }
+  .more { margin-top:14px; color:#555; font-size:14px; background:none; border:0; padding:0; cursor:pointer; text-align:left }
+  .more:hover { color:var(--dim) }
+  .detail { margin-top:16px; background:#242424; border-radius:10px; padding:12px 14px; font-size:13px }
+  .detail[hidden] { display:none }
+  .detail b { color:var(--bad); font-weight:500 }
+  .detail pre { margin:8px 0 0; white-space:pre-wrap; word-break:break-word; color:var(--dim); font:12px/1.45 ui-monospace,Consolas,monospace }
+  footer { display:flex; gap:8px; align-items:center; margin-top:26px }
+  button.ctl, select { background:#2a2a2a; color:var(--fg); border:0; border-radius:8px; padding:6px 12px; font:inherit; cursor:pointer }
+  input[type=range] { flex:1; accent-color:#888 }
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <header>
+    <div class="lead"><div class="badge" id="badge">&middot;&middot;&middot;</div><div><h1 id="title"></h1><div class="sub" id="sub"></div></div></div>
+    <div class="stats"><div class="time" id="time">0.0s</div><div><span id="np">0 passed</span> &middot; <i id="nf">0 failed</i></div></div>
+  </header>
+  <div class="graphhead"><span>Tests finished per second</span><span class="mono" id="peak"></span></div>
+  <canvas id="graph" width="1640" height="260"></canvas>
+  <div class="foot" id="foot"></div>
+  <div class="rows" id="rows"></div>
+  <button class="more" id="more" hidden></button>
+  <div class="detail" id="detail" hidden></div>
+  <footer>
+    <button class="ctl" id="play">Pause</button>
+    <input type="range" id="scrub" min="0" max="1000" value="0">
+    <select id="speed"><option value="1" selected>1x</option><option value="2">2x</option><option value="5">5x</option><option value="20">20x</option></select>
+  </footer>
+</div>
+<script>
+const DATA = /*DATA*/null;
+const MAXROWS = 8;
+const $ = (id) => document.getElementById(id);
+const demo = () => { // opened without a recorded or live run: sample data so the page still shows something
+  const files = ["hero.test.tsx","landing-page.test.tsx","brand.test.ts","pricing.test.ts","canvas-page.test.tsx","a11y.test.tsx"].map((name) => ({ name, count: 24, d: null }));
+  const events = []; let t = 0;
+  for (let i = 0; i < 145; i++) { t += 20 + Math.random() * 90 * (i % 40 < 8 ? 1 : 0.3); const f = Math.floor(Math.random() * files.length); events.push({ t: Math.round(t), f, s: i === 27 || i === 60 || i === 95 ? "f" : "p", n: "sample " + i, d: 5, e: "Sample assertion error" }); }
+  files.forEach((x, i) => (x.count = events.filter((e) => e.f === i).length));
+  return { title: "Sample run", total: Math.round(t) + 400, files, events };
+};
+const isLive = !DATA && location.protocol.startsWith("http");
+let run = DATA || (isLive ? { title: "", total: 0, files: [], events: [] } : demo());
+let ended = !isLive, clockBase = 0, now = 0, playing = true, last = performance.now(), showAll = false, selected = null;
+const rows = []; // per file: { el, cells }
+
+function ensureRow(i) {
+  if (rows[i]) return rows[i];
+  const el = document.createElement("div"); el.className = "row"; el.hidden = true;
+  el.innerHTML = '<div class="name"></div><div class="cells"></div><div class="res"></div>';
+  el.style.order = i; $("rows").append(el);
+  return (rows[i] = { el, cells: el.querySelector(".cells"), name: el.querySelector(".name"), res: el.querySelector(".res") });
+}
+function resetRows() { $("rows").innerHTML = ""; rows.length = 0; selected = null; $("detail").hidden = true; }
+
+if (isLive) {
+  const es = new EventSource("/events");
+  es.onmessage = (m) => {
+    const msg = JSON.parse(m.data);
+    clockBase = msg.now - performance.now();
+    if (msg.type === "reset") { run = { title: msg.title, total: 0, files: [], events: [] }; ended = false; playing = true; now = 0; resetRows(); }
+    else if (msg.type === "file") { run.files[msg.f] = Object.assign(run.files[msg.f] ?? { d: null }, { name: msg.name, count: msg.count }); }
+    else if (msg.type === "test") { run.events.push(msg.ev); }
+    else if (msg.type === "fileend") { if (run.files[msg.f]) run.files[msg.f].d = msg.d; }
+    else if (msg.type === "end") { ended = true; run.total = msg.total; now = msg.total; playing = false; $("play").textContent = "Replay"; }
+  };
+}
+
+function drawGraph(now, span) {
+  const g = $("graph"), ctx = g.getContext("2d");
+  const W = g.width, H = g.height, base = H - 6; ctx.clearRect(0, 0, W, H);
+  const WIN = Math.max(150, Math.round(span / 60)), nb = Math.ceil(span / WIN) + 1;
+  const raw = new Array(nb).fill(0);
+  for (const e of run.events) raw[Math.min(nb - 1, Math.floor(e.t / WIN))]++;
+  const rate = raw.map((_, i) => { let a = 0, c = 0; for (let k = i - 1; k <= i + 1; k++) if (raw[k] != null) { a += raw[k]; c++; } return a / c * 1000 / WIN; });
+  const peak = Math.max(1, ...rate); $("peak").textContent = "peak " + Math.round(peak) + "/s";
+  const X = (i) => i / (nb - 1) * W, Y = (v) => base - v / peak * (H - 40);
+  const lastI = Math.min(nb - 1, now / WIN);
+  const pts = []; for (let i = 0; i <= Math.floor(lastI); i++) pts.push([X(i), Y(rate[i])]);
+  const fr = lastI - Math.floor(lastI);
+  if (fr > 0 && Math.floor(lastI) < nb - 1) { const i = Math.floor(lastI); pts.push([X(lastI), Y(rate[i] + (rate[i + 1] - rate[i]) * fr)]); }
+  ctx.strokeStyle = "#333"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, base); ctx.lineTo(W, base); ctx.stroke();
+  ctx.strokeStyle = "rgba(255,64,64,.8)";
+  for (const e of run.events) if (e.s === "f" && e.t <= now) { const x = e.t / span * W; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, base); ctx.stroke(); ctx.fillStyle = "#ff4040"; ctx.fillRect(x - 4, 0, 8, 8); }
+  if (pts.length < 2) return;
+  const path = () => { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length - 1; i++) { const mx = (pts[i][0] + pts[i + 1][0]) / 2, my = (pts[i][1] + pts[i + 1][1]) / 2; ctx.quadraticCurveTo(pts[i][0], pts[i][1], mx, my); } const p = pts[pts.length - 1]; ctx.lineTo(p[0], p[1]); };
+  if (!drawGraph.ready) { const c = document.createElement("canvas"); c.width = c.height = 8; const d = c.getContext("2d"); d.fillStyle = "rgba(255,255,255,.35)"; d.fillRect(2, 2, 2, 2); drawGraph.pat = ctx.createPattern(c, "repeat"); drawGraph.ready = true; }
+  path(); ctx.lineTo(pts[pts.length - 1][0], base); ctx.lineTo(0, base); ctx.closePath(); ctx.fillStyle = drawGraph.pat; ctx.fill();
+  path(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 4; ctx.lineJoin = "round"; ctx.stroke();
+  const p = pts[pts.length - 1];
+  if (!ended || now < run.total) { const grd = ctx.createRadialGradient(p[0], p[1], 0, p[0], p[1], 18); grd.addColorStop(0, "rgba(255,255,255,.6)"); grd.addColorStop(1, "rgba(255,255,255,0)"); ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(p[0], p[1], 18, 0, 7); ctx.fill(); }
+  ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, 7); ctx.fill();
+}
+
+function render() {
+  const live = isLive && !ended;
+  const finished = ended && now >= run.total;
+  const span = live ? Math.max(now, 4000) : Math.max(1, run.total);
+  // group events by file, in order, up to `now`
+  const st = run.files.map(() => ({ done: 0, ff: 0, first: 0, lastT: 0, seen: [] }));
+  let p = 0, f = 0, doneTests = 0;
+  for (const e of run.events) {
+    const s = st[e.f]; if (!s) continue;
+    const seen = e.t <= now; s.seen.push(seen ? e : null);
+    if (!seen) continue;
+    if (!s.done) s.first = e.t;
+    s.done++; s.lastT = e.t; doneTests++;
+    if (e.s === "p") p++; else if (e.s === "f") { s.ff++; f++; }
+  }
+  // which rows to show: failing and running first, then most recently finished, then pending
+  const info = run.files.map((file, i) => {
+    const s = st[i], total = Math.max(file.count || 0, s.seen.length);
+    const state = s.ff ? "fail" : s.done === 0 ? "pending" : s.done < total ? "running" : "done";
+    return { i, s, total, state };
+  });
+  let visible;
+  if (showAll || info.length <= MAXROWS) visible = new Set(info.map((x) => x.i));
+  else {
+    visible = new Set(); const add = (list) => { for (const x of list) if (visible.size < MAXROWS) visible.add(x.i); };
+    add(info.filter((x) => x.state === "fail")); add(info.filter((x) => x.state === "running"));
+    add(info.filter((x) => x.state === "done").sort((a, b) => b.s.lastT - a.s.lastT));
+    add(info.filter((x) => x.state === "pending"));
+  }
+  for (const x of info) {
+    const r = ensureRow(x.i), file = run.files[x.i];
+    if (r.name.textContent !== file.name.split("/").pop()) { r.name.textContent = file.name.split("/").pop(); r.name.title = file.name; }
+    if (r.cells.children.length !== x.total) { r.cells.innerHTML = '<span class="cell"></span>'.repeat(x.total); }
+    r.el.hidden = !visible.has(x.i);
+    if (r.el.hidden) continue;
+    for (let k = 0; k < x.total; k++) {
+      const e = x.s.seen[k], c = r.cells[k] ?? r.cells.children[k];
+      const cls = "cell" + (e ? " " + e.s : "") + (e && e === selected ? " sel" : ""); if (c.className !== cls) c.className = cls;
+      c._ev = e && e.s === "f" ? e : null; if (e) c.title = e.n;
+    }
+    r.el.classList.toggle("live", x.state === "running" || x.state === "fail" || (x.state === "done" && !finished));
+    r.el.classList.toggle("dim", finished && x.state !== "fail");
+    const el = (x.state === "done" && run.files[x.i].d != null ? run.files[x.i].d : (x.state === "done" ? x.s.lastT : now) - x.s.first);
+    r.res.textContent = x.s.ff ? x.s.ff + " failed" : x.s.done && el > 0 ? (el / 1000).toFixed(1) + "s" : "";
+    r.res.className = "res" + (x.s.ff ? " bad" : "");
+  }
+  const hidden = info.length - visible.size, more = $("more");
+  more.hidden = !(hidden > 0 || (showAll && info.length > MAXROWS));
+  more.textContent = showAll ? "Show fewer files" : "+" + hidden + " more files";
+  $("np").textContent = p + " passed"; $("nf").textContent = f + " failed";
+  $("time").textContent = (now / 1000).toFixed(1) + "s";
+  $("title").textContent = finished ? (f ? f + " failing test" + (f > 1 ? "s" : "") : "All tests passed") : run.files.length || !isLive ? "Running tests" : "Waiting for tests";
+  $("sub").textContent = run.title;
+  const b = $("badge"); b.className = "badge" + (finished ? (f ? " bad" : " ok") : ""); b.innerHTML = finished ? (f ? "&#10005;" : "&#10003;") : "&middot;&middot;&middot;";
+  const planned = run.files.reduce((a, x) => a + (x.count || 0), 0);
+  $("foot").textContent = doneTests + (planned > doneTests ? " / " + planned : "") + " tests · " + info.length + " files";
+  $("card").classList.toggle("done", finished);
+  $("scrub").style.visibility = live ? "hidden" : ""; $("play").style.visibility = live ? "hidden" : ""; $("speed").style.visibility = live ? "hidden" : "";
+  $("scrub").value = run.total ? Math.round(now / run.total * 1000) : 0;
+  drawGraph(now, span);
+}
+function tick(t) {
+  const dt = t - last; last = t;
+  if (isLive && !ended) now = Math.max(now, performance.now() + clockBase);
+  else if (playing) { now = Math.min(run.total, now + dt * Number($("speed").value)); if (now >= run.total) { playing = false; $("play").textContent = "Replay"; } }
+  render(); requestAnimationFrame(tick);
+}
+$("play").onclick = () => { if (now >= run.total) now = 0; playing = !playing; $("play").textContent = playing ? "Pause" : "Play"; };
+$("scrub").oninput = (e) => { now = Number(e.target.value) / 1000 * run.total; playing = false; $("play").textContent = "Play"; };
+$("more").onclick = () => { showAll = !showAll; };
+$("rows").onclick = (ev) => {
+  const c = ev.target.closest(".cell.f"); const d = $("detail");
+  if (!c || !c._ev || selected === c._ev) { selected = null; d.hidden = true; return; }
+  selected = c._ev; d.hidden = false; d.innerHTML = "<b></b><pre></pre>";
+  d.querySelector("b").textContent = selected.n; d.querySelector("pre").textContent = selected.e || "(no message)";
+};
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
