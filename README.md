@@ -54,6 +54,8 @@ There is one row per test file and one cell per test. Grey is waiting, green pas
 
 With many files the page shows 8 rows: failing files first, then running ones, then the most recently finished. The rest collapse into "+N more files", which you can expand. Click a red cell for the test name and its error message.
 
+The Slowest panel under the rows lists the five slowest tests so far, updating as they finish. Switch it to Files to rank files by duration. The bar is relative to the slowest item, and a failed test's bar is red.
+
 After the run, open `.vitest-viz/index.html` to replay it. You can play, pause, scrub and change speed. It needs no server and no network.
 
 Watch mode works. The page resets on each rerun.

@@ -35,6 +35,16 @@
   .done .row.dim { opacity:.4 }
   .more { margin-top:14px; color:#555; font-size:14px; background:none; border:0; padding:0; cursor:pointer; text-align:left }
   .more:hover { color:var(--dim) }
+  .slowwrap { margin-top:26px } .slowwrap[hidden] { display:none }
+  .slowhead { display:flex; justify-content:space-between; align-items:center; color:#555; font-size:14px; margin-bottom:10px }
+  .tabs { display:flex; gap:4px }
+  .tab { background:none; color:#555; border:0; border-radius:6px; padding:2px 8px; font:inherit; cursor:pointer }
+  .tab.on { background:#2a2a2a; color:var(--fg) }
+  .slow { display:grid; gap:8px }
+  .srow { display:grid; grid-template-columns:minmax(120px,210px) 1fr 70px; gap:14px; align-items:center }
+  .srow .sname { font-family:ui-monospace,Consolas,monospace; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--fg) }
+  .sbar { height:8px; background:#2a2a2a; border-radius:4px; overflow:hidden } .sbar i { display:block; height:100%; background:#8a8a8a; border-radius:4px } .sbar i.bad { background:var(--bad) }
+  .srow .res { color:var(--fg) }
   .detail { margin-top:16px; background:#242424; border-radius:10px; padding:12px 14px; font-size:13px }
   .detail[hidden] { display:none }
   .detail b { color:var(--bad); font-weight:500 }
@@ -55,6 +65,10 @@
   <div class="foot" id="foot"></div>
   <div class="rows" id="rows"></div>
   <button class="more" id="more" hidden></button>
+  <section class="slowwrap" id="slowwrap" hidden>
+    <div class="slowhead"><span>Slowest</span><span class="tabs"><button type="button" class="tab on" data-k="tests">tests</button><button type="button" class="tab" data-k="files">files</button></span></div>
+    <div class="slow" id="slow"></div>
+  </section>
   <div class="detail" id="detail" hidden></div>
   <footer>
     <button class="ctl" id="play">Pause</button>
@@ -74,6 +88,7 @@ const demo = () => { // opened without a recorded or live run: sample data so th
   return { title: "Sample run", total: Math.round(t) + 400, files, events };
 };
 const isLive = !DATA && location.protocol.startsWith("http");
+let slowKind = "tests", slowHtml = "";
 let run = DATA || (isLive ? { title: "", total: 0, files: [], events: [] } : demo());
 let ended = !isLive, clockBase = 0, now = 0, playing = true, last = performance.now(), showAll = false, selected = null;
 const rows = []; // per file: { el, cells }
@@ -126,6 +141,29 @@ function drawGraph(now, span) {
   ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, 7); ctx.fill();
 }
 
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;" })[c]);
+const fmt = (ms) => (ms < 1000 ? Math.round(ms) + "ms" : (ms / 1000).toFixed(2) + "s");
+function renderSlowest(now) {
+  const seen = run.events.filter((e) => e.t <= now);
+  let items;
+  if (slowKind === "files") {
+    const lastT = new Map(); for (const e of seen) lastT.set(e.f, e.t);
+    items = run.files.map((f, i) => ({ name: f.name.split("/").pop(), title: f.name, d: f.d, bad: false, ok: f.d != null && lastT.has(i) && seen.filter((e) => e.f === i).length >= f.count }));
+    items = items.filter((x) => x.ok);
+  } else {
+    items = seen.filter((e) => e.d > 0).map((e) => ({ name: e.n, title: run.files[e.f]?.name + " > " + e.n, d: e.d, bad: e.s === "f" }));
+  }
+  items = items.sort((a, b) => b.d - a.d).slice(0, 5);
+  const max = items.length ? items[0].d : 1;
+  const html = items.map((x) => '<div class="srow"><div class="sname" title="' + esc(x.title) + '">' + esc(x.name) + '</div><div class="sbar"><i class="' + (x.bad ? "bad" : "") + '" style="width:' + Math.max(2, x.d / max * 100).toFixed(1) + '%"></i></div><div class="res">' + fmt(x.d) + "</div></div>").join("");
+  $("slowwrap").hidden = !items.length;
+  if (html !== slowHtml) { slowHtml = html; $("slow").innerHTML = html; }
+}
+document.querySelector(".tabs").onclick = (ev) => {
+  const k = ev.target.dataset?.k; if (!k) return;
+  slowKind = k; slowHtml = "";
+  for (const t of document.querySelectorAll(".tab")) t.classList.toggle("on", t.dataset.k === k);
+};
 function render() {
   const live = isLive && !ended;
   const finished = ended && now >= run.total;
@@ -141,6 +179,7 @@ function render() {
     s.done++; s.lastT = e.t; doneTests++;
     if (e.s === "p") p++; else if (e.s === "f") { s.ff++; f++; }
   }
+  renderSlowest(now);
   // which rows to show: failing and running first, then most recently finished, then pending
   const info = run.files.map((file, i) => {
     const s = st[i], total = Math.max(file.count || 0, s.seen.length);

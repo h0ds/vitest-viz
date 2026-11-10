@@ -63,6 +63,9 @@ test("records every test and writes a self-contained replay", async () => {
   expect(failed).toHaveLength(3);
   expect(failed[0].e).toMatch(/expected/);
   expect(data.events.every((e, i, all) => i === 0 || e.t >= all[i - 1].t)).toBe(true);
+  // durations feed the Slowest panel: the demo tests sleep at least 30 ms each
+  expect(data.events.every((e) => e.d >= 30)).toBe(true);
+  expect(data.files[0].d).toBeGreaterThan(0);
 });
 
 test("serves the page and an event stream while the run is going", async () => {
