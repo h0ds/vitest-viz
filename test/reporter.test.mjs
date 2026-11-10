@@ -55,7 +55,7 @@ test("records every test and writes a self-contained replay", async () => {
   const { code, out } = await runDemo();
   expect(code).toBe(1); // hero has failing tests, and the reporter must not change the exit code
   const html = readFileSync(out, "utf8");
-  const data = JSON.parse(html.match(/const DATA = (.*);\nconst MAXROWS/)[1]);
+  const data = JSON.parse(html.match(/const DATA = (.*);\r?\nconst MAXROWS/)[1]);
   expect(data.files).toHaveLength(1);
   expect(data.files[0]).toMatchObject({ name: "hero.test.mjs", count: 22 });
   expect(data.events).toHaveLength(22);
