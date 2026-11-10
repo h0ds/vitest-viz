@@ -12,7 +12,7 @@ The terminal reporter still works as usual. `vitest-viz` runs next to it, serves
 npm install --save-dev vitest-viz
 ```
 
-Requires Node 20 or later and Vitest 4 or later (tested on 4.1 and 5.1).
+Requires Vitest 4 or later (tested on 4.1 and 5.1) and Node 20 or later. Vitest 5 itself needs Node 22.
 
 ## Use
 
@@ -89,7 +89,7 @@ The reporter listens to Vitest's reporter hooks and records each result with a t
 ## Limits
 
 - Vitest only. Other runners have different hooks.
-- Tested on Vitest 4.1 and 5.1 on Windows with Node 24. The CI workflow adds Linux and Node 20 and 22. I haven't tried browser mode or sharded runs.
+- Tested on Vitest 4.1 and 5.1 on Windows with Node 24. CI runs Linux and Windows on Node 22 with Vitest 5 and on Node 20 with Vitest 4. I haven't tried browser mode or sharded runs.
 - Cell widths shrink to fit, so a file with thousands of tests gets very thin cells.
 
 ## Develop

@@ -5,29 +5,33 @@ on:
   pull_request:
 jobs:
   test:
+    name: test (${{ matrix.os }}, node ${{ matrix.node }}, vitest ${{ matrix.vitest }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        node: [20, 22]
+        include:
+          # Vitest 5 itself needs Node 22 or later, so Node 20 runs the oldest supported major instead.
+          - { os: ubuntu-latest, node: 22, vitest: 5 }
+          - { os: windows-latest, node: 22, vitest: 5 }
+          - { os: ubuntu-latest, node: 20, vitest: 4 }
+          - { os: windows-latest, node: 20, vitest: 4 }
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-          cache: npm
-      - run: npm ci
-      - run: npm test
-  # The reporter claims Vitest 4 and later, so run the suite on the oldest major too.
-  vitest4:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: npm pkg set devDependencies.vitest="^4.0.0"
-      - run: npm install
+      - name: Install (lockfile pins Vitest 5)
+        if: matrix.vitest == 5
+        run: npm ci
+      - name: Install (swap in Vitest 4)
+        if: matrix.vitest == 4
+        run: |
+          npm pkg set devDependencies.vitest="^4.0.0"
+          rm -f package-lock.json
+          npm install
       - run: npx vitest --version
       - run: npm test
